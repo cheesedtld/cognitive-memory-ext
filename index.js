@@ -679,13 +679,9 @@ function populateUI() {
     chunkRadios.forEach(r => { r.checked = r.value === s.chunkMode; });
 
     el('cogmem_w_relevance').value = s.wRelevance;
-    el('cogmem_w_relevance_val').textContent = s.wRelevance + '%';
     el('cogmem_w_recency').value = s.wRecency;
-    el('cogmem_w_recency_val').textContent = s.wRecency + '%';
     el('cogmem_w_importance').value = s.wImportance;
-    el('cogmem_w_importance_val').textContent = s.wImportance + '%';
     el('cogmem_decay_rate').value = s.decayRate;
-    el('cogmem_decay_val').textContent = (s.decayRate / 100).toFixed(2) + '/h';
 
     el('cogmem_inject_template').value = s.injectTemplate;
     el('cogmem_inject_depth').value = s.injectDepth;
@@ -725,17 +721,11 @@ function bindEvents() {
         r.addEventListener('change', () => { s.chunkMode = r.value; saveSettings(); });
     });
 
-    // 滑块实时显示
-    const bindSlider = (id, key, valId, format) => {
-        const el = document.getElementById(id);
-        const val = document.getElementById(valId);
-        if (!el || !val) return;
-        el.addEventListener('input', () => { val.textContent = format(el.value); s[key] = parseInt(el.value); saveSettings(); });
-    };
-    bindSlider('cogmem_w_relevance', 'wRelevance', 'cogmem_w_relevance_val', v => v + '%');
-    bindSlider('cogmem_w_recency', 'wRecency', 'cogmem_w_recency_val', v => v + '%');
-    bindSlider('cogmem_w_importance', 'wImportance', 'cogmem_w_importance_val', v => v + '%');
-    bindSlider('cogmem_decay_rate', 'decayRate', 'cogmem_decay_val', v => (v / 100).toFixed(2) + '/h');
+    // 权重 / 衰减（已改为数字输入）
+    bindVal('cogmem_w_relevance', 'wRelevance', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
+    bindVal('cogmem_w_recency', 'wRecency', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
+    bindVal('cogmem_w_importance', 'wImportance', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
+    bindVal('cogmem_decay_rate', 'decayRate', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
 
     // 注入模板
     const tmplEl = document.getElementById('cogmem_inject_template');

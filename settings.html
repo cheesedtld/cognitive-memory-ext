@@ -101,6 +101,9 @@
                 .cogmem-diag-item:hover {
                     background: var(--SmartThemeBlurTintColor, rgba(128,128,128,0.15)) !important;
                 }
+                .cogmem-diag-item * {
+                    pointer-events: none !important;
+                }
                 .cogmem-field-inline input {
                     margin: 0 !important;
                 }
@@ -110,20 +113,17 @@
             <div class="cogmem-section-title">
                 <i class="fa-solid fa-sliders"></i> 认知检索权重
             </div>
-            <div class="cogmem-slider-row">
-                <label>语义相关</label>
-                <input id="cogmem_w_relevance" type="range" min="0" max="100" step="5" value="50" />
-                <span id="cogmem_w_relevance_val" class="cogmem-slider-val">50%</span>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_w_relevance">语义相关 (%)</label>
+                <input id="cogmem_w_relevance" type="number" class="text_pole cogmem-narrow" min="0" max="100" step="5" value="50" />
             </div>
-            <div class="cogmem-slider-row">
-                <label>时间近因</label>
-                <input id="cogmem_w_recency" type="range" min="0" max="100" step="5" value="30" />
-                <span id="cogmem_w_recency_val" class="cogmem-slider-val">30%</span>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_w_recency">时间近因 (%)</label>
+                <input id="cogmem_w_recency" type="number" class="text_pole cogmem-narrow" min="0" max="100" step="5" value="30" />
             </div>
-            <div class="cogmem-slider-row">
-                <label>重要程度</label>
-                <input id="cogmem_w_importance" type="range" min="0" max="100" step="5" value="20" />
-                <span id="cogmem_w_importance_val" class="cogmem-slider-val">20%</span>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_w_importance">重要程度 (%)</label>
+                <input id="cogmem_w_importance" type="number" class="text_pole cogmem-narrow" min="0" max="100" step="5" value="20" />
             </div>
             <small class="cogmem-hint">三个权重控制检索排序策略。总和不必为100%，系统会自动归一化。</small>
 
@@ -200,10 +200,9 @@
                     value="10" />
             </div>
             <small class="cogmem-hint">最近 N 条消息不索引（它们在上下文窗口里）。</small>
-            <div class="cogmem-slider-row">
-                <label>衰减速率</label>
-                <input id="cogmem_decay_rate" type="range" min="0" max="100" step="1" value="1" />
-                <span id="cogmem_decay_val" class="cogmem-slider-val">0.01/h</span>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_decay_rate">衰减速率 (×0.01/h)</label>
+                <input id="cogmem_decay_rate" type="number" class="text_pole cogmem-narrow" min="0" max="100" step="1" value="1" />
             </div>
             <small class="cogmem-hint">衰减基于现实时间（非剧情时间）。0=永不遗忘 · 0.01≈现实3天半衰期 · 0.05≈现实14小时。被提起的记忆会自动加深。</small>
 

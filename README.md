@@ -1,141 +1,197 @@
-# 🧠 Cognitive Memory — SillyTavern 认知记忆插件
+# 砖头机 × SillyTavern 双向记忆同步
 
-基于**语义检索 + 情绪强度 + 重要性评分 + 时间衰减**的智能记忆系统。
+让你的角色在**酒馆（线下AIRP）**和**砖头机（线上聊天）**之间共享记忆。
 
-像人脑一样记忆：重要的事情记得深刻，琐碎的事情自然淡忘。
+支持两种模式：
+- **🧠 认知记忆模式（推荐）**：语义检索 + 重要性评估 + 情绪感知 + 时间衰减，像人脑一样记忆
+- **📋 传统摘要模式**：兼容旧插件，基于 AI 生成摘要的推拉同步
 
----
-
-## 特性
-
-- **认知打分**：每条记忆自动评估重要性（1-10）和情绪强度（0-1），使用便宜的 LLM（如 GPT-4o-mini）
-- **智能检索**：综合语义相似度、时间近因、重要性三维加权排序
-- **自然遗忘**：时间衰减机制，低重要性记忆自然褪色，被提起的记忆会加深
-- **核心记忆**：可将关键记忆标为"核心"，永不衰减
-- **记忆鲜活度**：检索结果标注 deep/clear/fading/vague，让 AI 知道这段记忆有多鲜活
-- **砖头机联动**：支持与砖头机双向推拉同步，共享记忆库
-- **独立使用**：不需要砖头机也能完整运行
+> **注意**：酒馆和砖头机中的角色名字必须相同，同步通过角色名匹配。砖头机的备注不影响匹配。
 
 ---
 
-## 安装
+## 架构概览
 
-### 1. 复制插件
+### 认知记忆模式（推荐）
+
+```
+砖头机（手机端）←── HTTP ──→ cognitive-memory 插件 ←── 内部 ──→ 认知记忆脚本（酒馆前端）
+                               ↕ SQLite DB
+                    向量+元数据双向同步（免总结）
+```
+
+| 组件 | 文件 | 位置 | 职责 |
+|------|------|------|------|
+| Server Plugin | `cognitive-memory/index.js` | ST 服务端 | 认知引擎核心：Embedding + LLM评估 + SQLite |
+| 前端脚本 | `cognitive-memory-extension.js` | ST 前端（TavernHelper） | 自动索引 + 认知检索注入 + 记忆浏览 |
+| 砖头机客户端 | 内置 `05v-vector.js` + `22-tavern-sync.js` | 砖头机浏览器 | 本地认知引擎 + 双向块同步 |
+
+### 传统摘要模式（兼容）
+
+| 组件 | 文件 | 位置 | 职责 |
+|------|------|------|------|
+| Server Plugin | `zhuantouji-sync/index.js` | ST 服务端 | REST API 中转站，JSON 文件存储 |
+| Bridge 脚本 | `zhuantouji-bridge.js` | ST 前端（TavernHelper） | 酒馆侧推送/拉取交互 |
+| 砖头机客户端 | 内置 `22-tavern-sync.js` | 砖头机浏览器 | 砖头机侧推送/拉取交互 |
+
+---
+
+## 安装步骤
+
+### 方案 A：认知记忆模式（推荐）
+
+#### 1. 安装认知记忆服务端插件
 
 ```bash
 cd SillyTavern/plugins
-git clone <repo-url> cognitive-memory
+# 复制 server-plugins/cognitive-memory/ 文件夹到这里
 cd cognitive-memory
 npm install
 ```
 
-或手动将 `cognitive-memory/` 文件夹放入 `SillyTavern/plugins/` 目录。
+打开 `config.yaml`，设置 `enableServerPlugins: true`，然后**重启酒馆**。
+看到 `[CogMem] 🧠 认知记忆插件已加载！` 即成功。
 
-### 2. 启用插件
+#### 2. 安装认知记忆前端扩展
 
-编辑 `SillyTavern/config.yaml`：
-
-```yaml
-enableServerPlugins: true
-```
-
-### 3. 重启酒馆
-
-看到以下日志即成功：
+将 `extensions/cognitive-memory-ext/` 文件夹复制到酒馆的扩展目录：
 
 ```
-[CogMem] 🧠 认知记忆插件已加载！
-[CogMem] 📦 数据库已初始化: .../plugins/cognitive-memory/data/memories.db
+SillyTavern/data/default-user/extensions/third-party/cognitive-memory-ext/
+├── manifest.json
+├── index.js
+├── settings.html
+└── style.css
 ```
+
+**重启酒馆**后，在「扩展 → 已安装」中可看到「🧠 认知记忆」。
+打开扩展设置面板，找到「🧠 认知记忆」展开即可配置。
+
+#### 3. 配置 API
+
+在扩展设置面板中填写：
+- **Embedding API**：地址 + Key + 模型（如 `text-embedding-3-small`）
+- **评估 LLM**（可选）：便宜模型即可（如 `gpt-4o-mini`），用于自动评估重要性和情绪
+- 点击「**保存设置到服务端**」将配置同步到 Server Plugin
+
+#### 功能说明
+
+| 功能 | 说明 |
+|------|------|
+| 自动索引 | 每条新消息自动存入认知记忆库（可关闭） |
+| 认知注入 | AI 生成前自动搜索并按鲜活度分层注入 prompt |
+| 全量索引 | 一键将全部历史消息导入 |
+| 记忆浏览 | 查看/搜索/编辑/删除/标记核心 |
+| 砖头机同步 | 推拉认知记忆块（免 AI 总结） |
+| 诊断测试 | 输入查询测试认知检索效果 |
 
 ---
 
-## API 文档
+### 方案 B：传统摘要模式（兼容旧插件）
 
-基础路径: `/api/plugins/cognitive-memory`
+#### 第一步：安装服务端插件
 
-### POST /index — 存入记忆
+1. 进入酒馆安装目录下的 `plugins/` 文件夹
+2. 创建一个叫 `zhuantouji-sync` 的文件夹
+3. 把 `server-plugins/zhuantouji-sync/index.js` 放进去，最终路径为：
+   ```
+   SillyTavern/plugins/zhuantouji-sync/index.js
+   ```
+4. 打开酒馆根目录的 `config.yaml`，找到 `enableServerPlugins`，改为 `true`
+5. **重启酒馆**
+6. 看到控制台输出 `[ZTJ-Sync] 🔗 砖头机同步插件已加载！` 即成功
 
-```json
-{
-  "chatTag": "chat:小红",
-  "source": "st",
-  "chunks": [
-    { "text": "对话文本片段", "timestamp": 1712345678000 }
-  ],
-  "autoScore": true
-}
-```
+> 也可以用命令行安装：
+> ```bash
+> cd SillyTavern/plugins
+> git clone https://github.com/cheesedtld/SillyTavern-Server-Plugin-Zhuantouji-Sync.git zhuantouji-sync
+> ```
 
-### POST /search — 认知检索
+### 第二步：安装酒馆助手脚本
 
-```json
-{
-  "chatTag": "chat:小红",
-  "query": "你还记得我们之间的事吗",
-  "topK": 5,
-  "weights": { "relevance": 0.5, "recency": 0.3, "importance": 0.2 }
-}
-```
+**方式一：导入 JSON（推荐）**
+1. 在酒馆中打开**酒馆助手**（TavernHelper / JS-Slash-Runner）
+2. 进入脚本库 → 导入
+3. 选择 `legacy-tavern-helper-scripts/酒馆助手脚本-砖头机同步桥接.json` 文件导入
+4. 确认脚本已启用
 
-返回结果带 `vividness` 字段：deep / clear / fading / vague
+**方式二：手动创建**
+1. 在酒馆助手中进入脚本库 → 新建空脚本
+2. 脚本命名为「砖头机同步桥接」
+3. 把 `legacy-tavern-helper-scripts/zhuantouji-bridge.js` 的内容全部复制粘贴进脚本编辑器
+4. 保存并启用脚本
 
-### GET /memories — 查看记忆列表
+### 第三步：配置砖头机
 
-```
-GET /memories?chatTag=chat:小红&sort=importance&limit=50
-```
-
-### PUT /memories/:id — 更新记忆
-
-```json
-{ "importance": 9, "isCore": true }
-```
-
-### POST /decay — 触发衰减
-
-```json
-{ "chatTag": "chat:小红", "hoursElapsed": 24 }
-```
-
-### POST /sync/push — 砖头机推送记忆
-
-```json
-{
-  "chatTag": "chat:小红",
-  "source": "ztj",
-  "memories": [{ "text": "...", "embedding": [...], "importance": 7, ... }]
-}
-```
-
-### GET /sync/pull — 砖头机拉取记忆
-
-```
-GET /sync/pull?chatTag=chat:小红&since=1712345678000&source=st
-```
-
-支持增量拉取（since 参数）和按来源过滤。
-
-### POST /settings — 保存设置
-
-### GET /settings — 获取设置
-
-### GET /stats — 统计信息
-
-### GET /status — 健康检查
+1. 打开砖头机 → 进入任意聊天 → 聊天设置 → 记忆设置
+2. 找到「酒馆同步 (SillyTavern)」区块
+3. 输入酒馆地址（例如 `https://你的酒馆地址.com` 或本地 `http://localhost:8000`）
+4. 如有账号密码则填入
+5. 点击「连接」按钮，看到「连接成功」即完成
 
 ---
 
-## 砖头机联动
+## 日常使用
 
-1. 在砖头机的聊天设置中填入酒馆地址
-2. 砖头机会自动调用插件的 `/sync/push` 和 `/sync/pull` 接口
-3. 推拉的是完整的认知记忆块（文本+向量+元数据），不需要 AI 总结
+### 场景一：在酒馆玩完线下剧情 → 去砖头机聊天
+
+1. 在酒馆中玩完一段 AIRP 后，点击脚本按钮「**同步到砖头机**」
+2. AI 自动生成 MemoryBox 格式的详细剧情摘要（包含剧情总结、人物关系、剧情发展、伏笔、重要物品）
+3. 摘要以折叠的系统消息插入聊天记录中，可展开查看完整内容
+4. 打开砖头机 → 聊天设置 → 记忆设置 → 点击「**拉取线下记忆**」
+5. 线下记忆以可编辑条目显示，可修改标题/内容、切换启用状态
+6. 现在砖头机的 AI 知道你们线下发生了什么
+
+### 场景二：在砖头机聊完天 → 去酒馆继续线下剧情
+
+1. 在砖头机中先做一次总结（可选聊天总结、其她总结、全量总结）
+2. 通过记忆列表的开关选择要推送的条目
+3. 点击「**推送线上记忆**」，将选中的记忆发送到酒馆
+4. 打开酒馆 → 点击脚本按钮「**从砖头机拉取**」
+5. 线上记忆以折叠的系统消息注入聊天，并添加模式切换提示
+6. 现在酒馆的 AI 知道你们线上聊了什么
 
 ---
 
-## 数据存储
+## 记忆总结系统
 
-所有数据存储在 `plugins/cognitive-memory/data/memories.db`（SQLite 文件）。
+砖头机提供四种记忆总结工具（位于 聊天设置 → 记忆设置 → 记忆操作）：
 
-备份只需复制此文件即可。
+| 类型 | 数据来源 | 用途 |
+|------|---------|------|
+| **聊天总结** | 当前聊天记录 | 压缩旧对话，释放上下文窗口 |
+| **其她总结** | 朋友圈 + 论坛 + 已有记忆 | 整理非聊天互动信息 |
+| **全量总结** | 所有来源（聊天+朋友圈+论坛+已有记忆+酒馆记忆） | 生成角色关系全景式档案 |
+| **手动添加** | 用户手写 | 补充 AI 无法感知的信息 |
+
+每种总结类型都支持**自定义提示词**（自定义总结提示词 → 展开），每个角色独立保存。
+
+---
+
+## 数据流向
+
+```
+📱 砖头机                          💻 酒馆
+  │                                  │
+  │  推送线上记忆 ─────────────►     │
+  │  （已启用的记忆条目）    Server   │
+  │                        Plugin   │
+  │     ◄───────────── 从砖头机拉取  │
+  │                                  │
+  │  拉取线下记忆 ◄─────────────     │
+  │  （智能合并到本地）      Server   │
+  │                        Plugin   │
+  │     ─────────────► 同步到砖头机  │
+  │                （MemoryBox摘要） │
+```
+
+### 智能合并（砖头机拉取时）
+
+| 情况 | 行为 |
+|------|------|
+| 首次拉取 | 创建新条目 |
+| 再次拉取，同标题 | 更新内容，保留开关状态 |
+| 再次拉取，新标题 | 追加新条目 |
+
+---
+

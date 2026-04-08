@@ -24,48 +24,75 @@
 
             <hr class="cogmem-divider" />
 
-            <!-- API 配置标签页 -->
-            <div class="cogmem-api-tabs">
-                <div class="cogmem-api-tab active" data-target="cogmem_api_emb"><i class="fa-solid fa-microchip"></i> Embedding API</div>
-                <div class="cogmem-api-tab" data-target="cogmem_api_score"><i class="fa-solid fa-brain"></i> 评估 LLM</div>
+            <!-- Embedding API -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-microchip"></i> Embedding API
             </div>
-
-            <!-- Embedding API 面板 -->
-            <div id="cogmem_api_emb" class="cogmem-api-content active">
-                <small class="cogmem-hint" style="display:block; margin-bottom:8px;">用于将文本记忆转化为向量表示，推荐 text-embedding-3-small。</small>
-                <div class="cogmem-field">
-                    <label for="cogmem_emb_endpoint">API 地址</label>
-                    <input id="cogmem_emb_endpoint" type="text" class="text_pole"
-                        placeholder="OpenAI 兼容端点，如 https://api.openai.com/v1" />
-                </div>
-                <div class="cogmem-field">
-                    <label for="cogmem_emb_key">API Key</label>
-                    <input id="cogmem_emb_key" type="password" class="text_pole" placeholder="sk-..." />
-                </div>
-                <div class="cogmem-field">
-                    <label for="cogmem_emb_model">模型</label>
-                    <input id="cogmem_emb_model" type="text" class="text_pole" placeholder="text-embedding-3-small" />
-                </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_endpoint">API 地址</label>
+                <input id="cogmem_emb_endpoint" type="text" class="text_pole"
+                    placeholder="OpenAI 兼容端点，如 https://api.openai.com/v1" />
             </div>
-
-            <!-- 评估 LLM 面板 -->
-            <div id="cogmem_api_score" class="cogmem-api-content">
-                <small class="cogmem-hint" style="display:block; margin-bottom:8px;">用于评分重要性/情绪。<br/>留空则自动复用上方 Embedding 的配置（此时 Embedding 地址必须支持 /chat/completions 路由）。</small>
-                <div class="cogmem-field">
-                    <label for="cogmem_score_endpoint">API 地址</label>
-                    <input id="cogmem_score_endpoint" type="text" class="text_pole" placeholder="留空则复用 Embedding 地址" />
-                </div>
-                <div class="cogmem-field">
-                    <label for="cogmem_score_key">API Key</label>
-                    <input id="cogmem_score_key" type="password" class="text_pole" placeholder="留空则复用 Embedding Key" />
-                </div>
-                <div class="cogmem-field">
-                    <label for="cogmem_score_model">模型</label>
-                    <input id="cogmem_score_model" type="text" class="text_pole" placeholder="gpt-4o-mini" />
-                </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_key">API Key</label>
+                <input id="cogmem_emb_key" type="password" class="text_pole" placeholder="sk-..." />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_model">模型</label>
+                <input id="cogmem_emb_model" type="text" class="text_pole" placeholder="text-embedding-3-small" />
             </div>
 
             <hr class="cogmem-divider" />
+
+            <!-- 评估 LLM -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-brain"></i> 评估 LLM <small>（用于评分重要性/情绪，推荐便宜模型）</small>
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_endpoint">API 地址</label>
+                <input id="cogmem_score_endpoint" type="text" class="text_pole" placeholder="留空则复用 Embedding 地址" />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_key">API Key</label>
+                <input id="cogmem_score_key" type="password" class="text_pole" placeholder="留空则复用 Embedding Key" />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_model">模型</label>
+                <input id="cogmem_score_model" type="text" class="text_pole" placeholder="gpt-4o-mini" />
+            </div>
+
+            <hr class="cogmem-divider" />
+
+            <style>
+                /* 强制注入的样式，绕过酒馆缓存 */
+                .cogmem-actions {
+                    display: grid !important;
+                    grid-template-columns: 1fr 1fr !important;
+                    gap: 8px !important;
+                    margin: 8px 0 !important;
+                }
+                .cogmem-actions .menu_button {
+                    margin: 0 !important;
+                    box-sizing: border-box !important;
+                }
+                .cogmem-diag-grid {
+                    display: grid !important;
+                    grid-template-columns: 1fr 1fr !important;
+                    gap: 8px !important;
+                    margin: 8px 0 !important;
+                }
+                .cogmem-diag-item {
+                    background: var(--SmartThemeBlurTintColor, rgba(128,128,128,0.1)) !important;
+                    border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2)) !important;
+                    box-sizing: border-box !important;
+                }
+                .cogmem-diag-item:hover {
+                    background: var(--SmartThemeBlurTintColor, rgba(128,128,128,0.15)) !important;
+                }
+                .cogmem-field-inline input {
+                    margin: 0 !important;
+                }
+            </style>
 
             <!-- 认知权重 -->
             <div class="cogmem-section-title">

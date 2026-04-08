@@ -696,19 +696,6 @@ function populateUI() {
 
 function bindEvents() {
     const s = getSettings();
-
-    // API 标签页切换
-    const apiTabs = document.querySelectorAll('.cogmem-api-tab');
-    apiTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            apiTabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.cogmem-api-content').forEach(c => c.classList.remove('active'));
-            tab.classList.add('active');
-            const targetId = tab.getAttribute('data-target');
-            document.getElementById(targetId)?.classList.add('active');
-        });
-    });
-
     const bindVal = (id, key, transform = v => v) => {
         const el = document.getElementById(id);
         if (!el) return;

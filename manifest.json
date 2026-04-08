@@ -1,0 +1,14 @@
+{
+    "display_name": "认知记忆 (Cognitive Memory)",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Zhuantouji",
+    "version": "1.0.0",
+    "homePage": "",
+    "auto_update": true,
+    "generate_interceptor": "cognitiveMemoryInterceptor"
+}

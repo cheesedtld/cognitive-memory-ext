@@ -1,0 +1,228 @@
+<div id="cogmem_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>🧠 认知记忆</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <!-- 主开关 -->
+            <div class="cogmem-toggle-row">
+                <label class="cogmem-switch-label">
+                    <input id="cogmem_enabled" type="checkbox" />
+                    <span>启用认知记忆</span>
+                </label>
+                <span id="cogmem_status_badge" class="cogmem-badge cogmem-badge-off">离线</span>
+            </div>
+            <small class="cogmem-hint">自动索引对话、认知检索注入 prompt、记忆浏览管理</small>
+
+            <!-- 状态统计 -->
+            <div id="cogmem_stats" class="cogmem-stats-bar">
+                <span id="cogmem_stat_total">记忆: --</span>
+                <span id="cogmem_stat_core">核心: --</span>
+                <span id="cogmem_stat_archived">归档: --</span>
+            </div>
+
+            <hr class="cogmem-divider" />
+
+            <!-- Embedding API -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-microchip"></i> Embedding API
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_endpoint">API 地址</label>
+                <input id="cogmem_emb_endpoint" type="text" class="text_pole"
+                    placeholder="OpenAI 兼容端点，如 https://api.openai.com/v1" />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_key">API Key</label>
+                <input id="cogmem_emb_key" type="password" class="text_pole" placeholder="sk-..." />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_emb_model">模型</label>
+                <input id="cogmem_emb_model" type="text" class="text_pole" placeholder="text-embedding-3-small" />
+            </div>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 评估 LLM -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-brain"></i> 评估 LLM <small>（用于评分重要性/情绪，推荐便宜模型）</small>
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_endpoint">API 地址</label>
+                <input id="cogmem_score_endpoint" type="text" class="text_pole" placeholder="留空则复用 Embedding 地址" />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_key">API Key</label>
+                <input id="cogmem_score_key" type="password" class="text_pole" placeholder="留空则复用 Embedding Key" />
+            </div>
+            <div class="cogmem-field">
+                <label for="cogmem_score_model">模型</label>
+                <input id="cogmem_score_model" type="text" class="text_pole" placeholder="gpt-4o-mini" />
+            </div>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 认知权重 -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-sliders"></i> 认知检索权重
+            </div>
+            <div class="cogmem-slider-row">
+                <label>语义相关</label>
+                <input id="cogmem_w_relevance" type="range" min="0" max="100" step="5" value="50" />
+                <span id="cogmem_w_relevance_val" class="cogmem-slider-val">50%</span>
+            </div>
+            <div class="cogmem-slider-row">
+                <label>时间近因</label>
+                <input id="cogmem_w_recency" type="range" min="0" max="100" step="5" value="30" />
+                <span id="cogmem_w_recency_val" class="cogmem-slider-val">30%</span>
+            </div>
+            <div class="cogmem-slider-row">
+                <label>重要程度</label>
+                <input id="cogmem_w_importance" type="range" min="0" max="100" step="5" value="20" />
+                <span id="cogmem_w_importance_val" class="cogmem-slider-val">20%</span>
+            </div>
+            <small class="cogmem-hint">三个权重控制检索排序策略。总和不必为100%，系统会自动归一化。</small>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 注入模板 -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-syringe"></i> 注入模板
+            </div>
+            <div class="cogmem-field">
+                <textarea id="cogmem_inject_template" class="text_pole textarea_compact" rows="4"
+                    placeholder="用 {{text}} 代表记忆内容"></textarea>
+            </div>
+            <small class="cogmem-hint">{{text}} 会被替换为检索到的记忆。可自定义角色如何接收记忆上下文。</small>
+
+            <!-- 注入位置 -->
+            <div class="cogmem-section-title" style="margin-top:8px;">
+                <i class="fa-solid fa-location-dot"></i> 注入位置
+            </div>
+            <div class="cogmem-radio-group">
+                <label class="cogmem-radio-label">
+                    <input type="radio" name="cogmem_inject_pos" value="before" />
+                    <span>主提示词/故事线之前</span>
+                </label>
+                <label class="cogmem-radio-label">
+                    <input type="radio" name="cogmem_inject_pos" value="after" checked />
+                    <span>主提示词/故事线之后</span>
+                </label>
+                <label class="cogmem-radio-label">
+                    <input type="radio" name="cogmem_inject_pos" value="depth" />
+                    <span>聊天的特定深度</span>
+                    <input id="cogmem_inject_depth" type="number" class="text_pole cogmem-depth-input" min="0" max="100"
+                        value="2" />
+                </label>
+            </div>
+            <small class="cogmem-hint">深度 0 = 最新消息之后，1 = 最新消息之前，2 = 倒数第二条之前，以此类推。</small>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 其他参数 -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-gear"></i> 参数设置
+            </div>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_topk">检索数量 (TopK)</label>
+                <input id="cogmem_topk" type="number" class="text_pole cogmem-narrow" min="1" max="20" value="5" />
+            </div>
+
+            <!-- 分块模式 -->
+            <div class="cogmem-section-title" style="margin-top:6px;margin-bottom:2px;">
+                <i class="fa-solid fa-scissors"></i> 分块方式
+            </div>
+            <div class="cogmem-radio-group">
+                <label class="cogmem-radio-label">
+                    <input type="radio" name="cogmem_chunk_mode" value="chars" checked />
+                    <span>按字符数</span>
+                    <input id="cogmem_chunk_chars" type="number" class="text_pole cogmem-depth-input"
+                        style="width:70px!important;" min="200" max="5000" step="100" value="1000" />
+                    <span class="cogmem-hint" style="display:inline;margin:0;">字/块</span>
+                </label>
+                <label class="cogmem-radio-label">
+                    <input type="radio" name="cogmem_chunk_mode" value="messages" />
+                    <span>按条数</span>
+                    <input id="cogmem_chunk_msgs" type="number" class="text_pole cogmem-depth-input"
+                        style="width:50px!important;" min="1" max="30" value="5" />
+                    <span class="cogmem-hint" style="display:inline;margin:0;">条/块</span>
+                </label>
+            </div>
+            <small class="cogmem-hint">按字符：适合长RP（自动按字数切块）。按条数：适合小摘要（每N条消息合并一块）。</small>
+
+            <div class="cogmem-field-inline" style="margin-top:6px;">
+                <label for="cogmem_keep_recent">保近窗口（跳过最近 N 楼）</label>
+                <input id="cogmem_keep_recent" type="number" class="text_pole cogmem-narrow" min="0" max="100"
+                    value="10" />
+            </div>
+            <small class="cogmem-hint">最近 N 条消息不索引（它们在上下文窗口里）。</small>
+            <div class="cogmem-slider-row">
+                <label>衰减速率</label>
+                <input id="cogmem_decay_rate" type="range" min="0" max="100" step="1" value="1" />
+                <span id="cogmem_decay_val" class="cogmem-slider-val">0.01/h</span>
+            </div>
+            <small class="cogmem-hint">衰减基于现实时间（非剧情时间）。0=永不遗忘 · 0.01≈现实3天半衰期 · 0.05≈现实14小时。被提起的记忆会自动加深。</small>
+
+            <div class="cogmem-toggle-row" style="margin-top:8px;">
+                <label class="cogmem-switch-label">
+                    <input id="cogmem_auto_index" type="checkbox" checked />
+                    <span>自动索引新消息</span>
+                </label>
+            </div>
+            <div class="cogmem-toggle-row">
+                <label class="cogmem-switch-label">
+                    <input id="cogmem_auto_inject" type="checkbox" checked />
+                    <span>生成前自动注入记忆</span>
+                </label>
+            </div>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 操作按钮 -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-wrench"></i> 操作
+            </div>
+            <div class="cogmem-actions">
+                <div id="cogmem_btn_full_index" class="menu_button">
+                    <i class="fa-solid fa-database"></i>
+                    <span>全量索引</span>
+                </div>
+                <div id="cogmem_btn_browse" class="menu_button">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <span>浏览记忆</span>
+                </div>
+                <div id="cogmem_btn_sync_push" class="menu_button">
+                    <i class="fa-solid fa-arrow-up"></i>
+                    <span>推送到砖头机</span>
+                </div>
+                <div id="cogmem_btn_sync_pull" class="menu_button">
+                    <i class="fa-solid fa-arrow-down"></i>
+                    <span>从砖头机拉取</span>
+                </div>
+            </div>
+            <div id="cogmem_action_status" class="cogmem-action-status"></div>
+
+            <hr class="cogmem-divider" />
+
+            <!-- 诊断 -->
+            <div class="cogmem-section-title">
+                <i class="fa-solid fa-stethoscope"></i> 诊断测试
+            </div>
+            <div class="cogmem-field" style="display:flex;gap:6px;align-items:center;">
+                <input id="cogmem_diag_query" type="text" class="text_pole" placeholder="输入测试查询"
+                    style="flex:1;min-width:0;" />
+                <div id="cogmem_btn_diag" class="menu_button" style="white-space:nowrap;padding:8px 14px;">搜索</div>
+            </div>
+            <div id="cogmem_diag_results" class="cogmem-diag-results"></div>
+
+            <!-- 保存 -->
+            <div class="cogmem-save-row">
+                <div id="cogmem_btn_save" class="menu_button menu_button_icon">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>保存设置到服务端</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

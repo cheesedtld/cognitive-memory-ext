@@ -85,6 +85,10 @@
                     background: var(--SmartThemeBlurTintColor, rgba(128,128,128,0.1)) !important;
                     border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.2)) !important;
                     box-sizing: border-box !important;
+                    cursor: pointer !important;
+                    touch-action: manipulation !important;
+                    -webkit-tap-highlight-color: transparent !important;
+                    user-select: none !important;
                 }
                 .cogmem-diag-item:hover {
                     background: var(--SmartThemeBlurTintColor, rgba(128,128,128,0.15)) !important;
@@ -243,23 +247,19 @@
 
             <!-- 逐项检测按钮 -->
             <div class="cogmem-diag-grid">
-                <div id="cogmem_diag_plugin" class="cogmem-diag-item">
-                    <div class="cogmem-diag-icon">🔌</div>
+                <div id="cogmem_diag_plugin" class="cogmem-diag-item" role="button" tabindex="0">
                     <div class="cogmem-diag-label">服务端插件</div>
                     <div class="cogmem-diag-status" id="cogmem_diag_plugin_status">未检测</div>
                 </div>
-                <div id="cogmem_diag_emb" class="cogmem-diag-item">
-                    <div class="cogmem-diag-icon">📐</div>
+                <div id="cogmem_diag_emb" class="cogmem-diag-item" role="button" tabindex="0">
                     <div class="cogmem-diag-label">Embedding API</div>
                     <div class="cogmem-diag-status" id="cogmem_diag_emb_status">未检测</div>
                 </div>
-                <div id="cogmem_diag_llm" class="cogmem-diag-item">
-                    <div class="cogmem-diag-icon">🧠</div>
+                <div id="cogmem_diag_llm" class="cogmem-diag-item" role="button" tabindex="0">
                     <div class="cogmem-diag-label">评估 LLM</div>
                     <div class="cogmem-diag-status" id="cogmem_diag_llm_status">未检测</div>
                 </div>
-                <div id="cogmem_diag_db" class="cogmem-diag-item">
-                    <div class="cogmem-diag-icon">💾</div>
+                <div id="cogmem_diag_db" class="cogmem-diag-item" role="button" tabindex="0">
                     <div class="cogmem-diag-label">记忆数据库</div>
                     <div class="cogmem-diag-status" id="cogmem_diag_db_status">未检测</div>
                 </div>

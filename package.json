@@ -1,9 +1,0 @@
-{
-  "name": "sillytavern-cognitive-memory",
-  "version": "1.0.0",
-  "description": "认知记忆引擎 — 基于语义检索 + 情绪/重要性/时间衰减的智能记忆系统",
-  "main": "index.js",
-  "dependencies": {
-    "better-sqlite3": "^11.0.0"
-  }
-}

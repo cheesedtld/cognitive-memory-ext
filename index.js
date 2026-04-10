@@ -220,12 +220,16 @@ async function searchCognitiveMemory(queryText) {
     return result;
 }
 
-function buildInjectionContext(results) {
-    if (!results || results.length === 0) return '';
+function buildInjectionContext(searchResult) {
+    if (!searchResult || (!searchResult.results?.length && !searchResult.graphFacts?.length)) return '';
     const s = getSettings();
     let memoryText = '';
 
-    for (const mem of results) {
+    if (searchResult.graphFacts && searchResult.graphFacts.length > 0) {
+        memoryText += `[知识图谱 - 确凿的事实关联 (非常重要)]\n${searchResult.graphFacts.join('\n')}\n---\n\n`;
+    }
+
+    for (const mem of (searchResult.results || [])) {
         const time = formatTimeAgo(mem.timestamp);
         const emoji = EMOTION_EMOJI[mem.emotionType] || '';
         const label = VIVIDNESS_LABELS[mem.vividness] || '记忆';
@@ -255,26 +259,57 @@ globalThis.cognitiveMemoryInterceptor = async function (chat, contextSize, abort
     if (!charName) return;
 
     try {
-        // 用最后几条消息构建查询
-        const recentMsgs = chat.slice(-3);
+        // 用最后连续几条用户消息构建查询，并在前部增加角色名和用户名增强检索精度（Query Augmentation）
         const ctx = SillyTavern.getContext();
         const userName = ctx.name1 || 'User';
-        const query = recentMsgs.map(m => {
-            const sender = m.is_user ? userName : charName;
-            return `${sender}: ${(m.mes || '').substring(0, 300)}`;
-        }).join('\n');
+        let userMsgParts = [];
+        
+        // 从末尾向前扫描，收集连续的用户消息
+        for (let i = chat.length - 1; i >= 0; i--) {
+            const m = chat[i];
+            if (m.is_system || m.is_user === false) {
+                // 遇到非用户的正常消息（AI的回复），停止收集
+                if (!m.is_system && m.is_user === false) break;
+                continue;
+            }
+            if (m.is_user) {
+                const txt = (m.mes || '').trim();
+                if (txt) {
+                    userMsgParts.unshift(txt.substring(0, 300)); // 使用unshift保持时间顺序
+                }
+            }
+        }
+        
+        let lastUserMsg = userMsgParts.join(' ');
+        
+        // 如果没有收到用户消息，则降级为使用倒数第一条正常消息
+        if (!lastUserMsg && chat.length > 0) {
+            for (let i = chat.length - 1; i >= 0; i--) {
+                const m = chat[i];
+                if (!m.is_system) {
+                    lastUserMsg = (m.mes || '').substring(0, 300);
+                    break;
+                }
+            }
+        }
+
+        let query = lastUserMsg.substring(0, 500);
+        // Query Augmentation
+        if (charName) query = `${charName} ${query}`;
+        if (userName && userName !== charName) query = `${userName} ${query}`;
+        query = query.substring(0, 500);
 
         console.log('[CogMem] 🔍 Searching cognitive memory for generation...');
         const result = await searchCognitiveMemory(query);
 
-        if (!result.results || result.results.length === 0) {
+        if (!result.results?.length && !result.graphFacts?.length) {
             console.log('[CogMem] No memory hits.');
             lastInjectedContext = '';
             updateInjectPreview();
             return;
         }
 
-        const injectionText = buildInjectionContext(result.results);
+        const injectionText = buildInjectionContext(result);
         lastInjectedContext = injectionText;
         console.log(`[CogMem] 🧠 Found ${result.results.length} memories, injecting ${injectionText.length} chars (pos: ${s.injectPosition})`);
 

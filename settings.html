@@ -1,7 +1,7 @@
 <div id="cogmem_settings">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>向量认知记忆</b>
+            <b>主动向量记忆 🧱</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
@@ -9,7 +9,7 @@
             <div class="cogmem-toggle-row">
                 <label class="cogmem-switch-label">
                     <input id="cogmem_enabled" type="checkbox" />
-                    <span>启用认知记忆</span>
+                    <span>启用向量记忆</span>
                 </label>
                 <span id="cogmem_status_badge" class="cogmem-badge cogmem-badge-off">离线</span>
             </div>
@@ -27,7 +27,8 @@
             <!-- Embedding API -->
             <div class="cogmem-section-title" style="display:flex;align-items:center;justify-content:space-between;">
                 <span><i class="fa-solid fa-microchip"></i> Embedding API</span>
-                <div id="cogmem_btn_pull_emb" class="menu_button" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;margin:0;white-space:nowrap;width:max-content;flex-shrink:0;">
+                <div id="cogmem_btn_pull_emb" class="menu_button"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;margin:0;white-space:nowrap;width:max-content;flex-shrink:0;">
                     <i class="fa-solid fa-cloud-arrow-down"></i> 拉取模型
                 </div>
             </div>
@@ -42,7 +43,8 @@
             </div>
             <div class="cogmem-field">
                 <label for="cogmem_emb_model">模型</label>
-                <input id="cogmem_emb_model" type="text" class="text_pole" placeholder="text-embedding-3-small" list="cogmem_emb_model_list" />
+                <input id="cogmem_emb_model" type="text" class="text_pole" placeholder="text-embedding-3-small"
+                    list="cogmem_emb_model_list" />
                 <datalist id="cogmem_emb_model_list"></datalist>
             </div>
 
@@ -51,7 +53,8 @@
             <!-- 评估 LLM -->
             <div class="cogmem-section-title" style="display:flex;align-items:center;justify-content:space-between;">
                 <span><i class="fa-solid fa-brain"></i> 评估 LLM <small>（用于评分重要性/情绪，推荐便宜模型）</small></span>
-                <div id="cogmem_btn_pull_score" class="menu_button" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;margin:0;white-space:nowrap;width:max-content;flex-shrink:0;">
+                <div id="cogmem_btn_pull_score" class="menu_button"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;margin:0;white-space:nowrap;width:max-content;flex-shrink:0;">
                     <i class="fa-solid fa-cloud-arrow-down"></i> 拉取模型
                 </div>
             </div>
@@ -65,7 +68,8 @@
             </div>
             <div class="cogmem-field">
                 <label for="cogmem_score_model">模型</label>
-                <input id="cogmem_score_model" type="text" class="text_pole" placeholder="gpt-4o-mini" list="cogmem_score_model_list" />
+                <input id="cogmem_score_model" type="text" class="text_pole" placeholder="gpt-4o-mini"
+                    list="cogmem_score_model_list" />
                 <datalist id="cogmem_score_model_list"></datalist>
             </div>
 
@@ -88,6 +92,7 @@
                 .cogmem-diag-grid {
                     display: grid !important;
                     grid-template-columns: 1fr 1fr !important;
+                    grid-auto-rows: 1fr !important;
                     gap: 8px !important;
                     margin: 8px 0 !important;
                 }
@@ -106,8 +111,8 @@
                     justify-content: center !important;
                     margin: 0 !important;
                     padding: 8px !important;
-                    min-height: 50px !important;
-                    height: auto !important;
+                    min-height: 60px !important;
+                    height: 100% !important;
                 }
 
                 .cogmem-diag-item:hover {
@@ -124,16 +129,6 @@
             </style>
 
 
-
-            <!-- 注入模板 -->
-            <div class="cogmem-section-title">
-                <i class="fa-solid fa-syringe"></i> 注入模板
-            </div>
-            <div class="cogmem-field">
-                <textarea id="cogmem_inject_template" class="text_pole textarea_compact" rows="4"
-                    placeholder="用 {{text}} 代表记忆内容"></textarea>
-            </div>
-            <small class="cogmem-hint">{{text}} 会被替换为检索到的记忆。可自定义角色如何接收记忆上下文。</small>
 
             <!-- 注入位置 -->
             <div class="cogmem-section-title" style="margin-top:8px;">
@@ -170,32 +165,44 @@
 
             <!-- 分块模式 -->
             <div class="cogmem-section-title" style="margin-top:6px;margin-bottom:2px;">
-                <i class="fa-solid fa-scissors"></i> 分块方式
+                <i class="fa-solid fa-scissors"></i> 分块机制
             </div>
-            <div class="cogmem-radio-group">
-                <label class="cogmem-radio-label">
-                    <input type="radio" name="cogmem_chunk_mode" value="chars" checked />
-                    <span>按字符数</span>
-                    <input id="cogmem_chunk_chars" type="number" class="text_pole cogmem-depth-input"
-                        style="width:70px!important;" min="200" max="5000" step="100" value="1000" />
-                    <span class="cogmem-hint" style="display:inline;margin:0;">字/块</span>
-                </label>
-                <label class="cogmem-radio-label">
-                    <input type="radio" name="cogmem_chunk_mode" value="messages" />
-                    <span>按条数</span>
-                    <input id="cogmem_chunk_msgs" type="number" class="text_pole cogmem-depth-input"
-                        style="width:50px!important;" min="1" max="30" value="5" />
-                    <span class="cogmem-hint" style="display:inline;margin:0;">条/块</span>
-                </label>
+            <div class="cogmem-field-inline">
+                <label for="cogmem_chunk_msgs">每多少条消息作为一块</label>
+                <input id="cogmem_chunk_msgs" type="number" class="text_pole cogmem-narrow" min="1" max="50"
+                    value="5" />
             </div>
-            <small class="cogmem-hint">按字符：适合长RP（自动按字数切块）。按条数：适合小摘要（每N条消息合并一块）。</small>
+            <small class="cogmem-hint">推荐每 1~5 条消息提取一次记忆。</small>
+
+            <!-- 自定义标签提取 -->
+            <div class="cogmem-section-title" style="margin-top:6px;margin-bottom:2px;">
+                <i class="fa-solid fa-tag"></i> 自定义标签提取
+            </div>
+            <div class="cogmem-field-inline">
+                <label>起始 / 结束标签</label>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <input id="cogmem_custom_tag_start" type="text" class="text_pole cogmem-narrow"
+                        style="width:88px!important;" placeholder="&lt;memory&gt;" />
+                    <span>...</span>
+                    <input id="cogmem_custom_tag_end" type="text" class="text_pole cogmem-narrow"
+                        style="width:88px!important;" placeholder="&lt;/memory&gt;" />
+                </div>
+            </div>
+            <small class="cogmem-hint">填写后，会从消息中提取 起始标签 和 结束标签 之间的内容。留空则忽略。</small>
+
+            <div class="cogmem-field-inline" style="margin-top:4px;">
+                <label for="cogmem_tag_threshold">长文本大模型提炼阈值（字）</label>
+                <input id="cogmem_tag_threshold" type="number" class="text_pole cogmem-narrow"
+                    style="width:80px!important;" min="0" max="5000" step="50" value="300" />
+            </div>
+            <small class="cogmem-hint">提取的文本超过此字数才会调用 LLM 深度提炼事件（较慢），否则只做关键词+评分的轻量打标（省钱）。</small>
 
             <div class="cogmem-field-inline" style="margin-top:6px;">
                 <label for="cogmem_keep_recent">保近窗口（跳过最近 N 楼）</label>
                 <input id="cogmem_keep_recent" type="number" class="text_pole cogmem-narrow" min="0" max="100"
                     value="25" />
             </div>
-            <small class="cogmem-hint">最近 N 条消息不索引（它们在上下文窗口里）。与砖头机端保持一致为 25。</small>
+            <small class="cogmem-hint">最近 N 条消息不索引（它们在上下文窗口里）。</small>
 
 
             <div class="cogmem-toggle-row" style="margin-top:8px;">
@@ -209,6 +216,14 @@
                     <input id="cogmem_auto_inject" type="checkbox" checked />
                     <span>生成前自动注入记忆</span>
                 </label>
+            </div>
+
+            <!-- 保存 -->
+            <div class="cogmem-save-row" style="margin-top:10px;">
+                <div id="cogmem_btn_save" class="menu_button menu_button_icon">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>保存设置到服务端</span>
+                </div>
             </div>
 
             <hr class="cogmem-divider" />
@@ -233,6 +248,10 @@
                 <div id="cogmem_btn_sync_pull" class="menu_button">
                     <i class="fa-solid fa-arrow-down"></i>
                     <span>从砖头机拉取</span>
+                </div>
+                <div id="cogmem_btn_sync_undo" class="menu_button" style="grid-column: 1 / -1;">
+                    <i class="fa-solid fa-trash-can" style="color:var(--SmartThemeDangerColor, #ff4a4a);"></i>
+                    <span style="color:var(--SmartThemeDangerColor, #ff4a4a);">撤销砖头机拉取</span>
                 </div>
             </div>
             <div id="cogmem_action_status" class="cogmem-action-status"></div>
@@ -294,13 +313,6 @@
             </div>
             <div id="cogmem_last_inject" class="cogmem-inject-preview">尚未注入</div>
 
-            <!-- 保存 -->
-            <div class="cogmem-save-row">
-                <div id="cogmem_btn_save" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>保存设置到服务端</span>
-                </div>
-            </div>
         </div>
     </div>
 </div>

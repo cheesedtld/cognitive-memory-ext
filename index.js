@@ -12,8 +12,7 @@
 const MODULE_NAME = 'cognitive_memory';
 const COG_API = '/api/plugins/cognitive-memory';
 
-const VIVIDNESS_LABELS = { deep: '深刻', clear: '清晰', fading: '褪色', vague: '模糊' };
-const EMOTION_EMOJI = {}; // deprecated: cognitive scoring no longer returns emotionType
+
 
 // ============ 默认设置 ============
 const DEFAULT_SETTINGS = Object.freeze({
@@ -30,12 +29,12 @@ const DEFAULT_SETTINGS = Object.freeze({
     wRecency: 30,
     wImportance: 20,
     topK: 5,
-    chunkMode: 'chars',
-    chunkChars: 1000,
     chunkMsgs: 5,
     keepRecent: 25,
     decayRate: 1,
-    injectTemplate: '[角色记忆 — 认知检索]\n以下是你自然想起的过往经历，按印象深浅排列。这些是已经发生过的事，请视为你自己的记忆：\n\n{{text}}',
+    customTagStart: '',
+    customTagEnd: '',
+    tagExtractThreshold: 300,
     injectPosition: 'after',
     injectDepth: 2,
 });
@@ -44,6 +43,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 let pluginOnline = false;
 let indexedMsgKeys = new Set();
 let lastInjectedContext = '';
+let surfaceTurnCounts = {};
 
 // ============ 工具函数 ============
 function getSettings() {
@@ -71,7 +71,10 @@ function getCharName() {
 }
 
 function getChatTag() {
-    return `chat:${getCharName()}`;
+    const charName = getCharName();
+    const ctx = SillyTavern.getContext();
+    const chatId = ctx.chatId || 'default';
+    return `chat:${charName}:${chatId}`;
 }
 
 async function apiCall(endpoint, options = {}) {
@@ -116,23 +119,34 @@ function formatMsg(msg, charName, userName) {
     return `${sender}: ${(msg.mes || '').substring(0, 2000)}`;
 }
 
-function chunkMessagesByChars(messages, maxChars, charName, userName) {
-    const chunks = [];
-    let currentLines = [];
-    let currentLen = 0;
+/**
+ * 从消息文本中提取自定义标签内的内容
+ * 支持 <tag>content</tag> 和 【tag】content【/tag】 格式
+ * @returns {string|null} 提取到的内容，未找到标签返回 null
+ */
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& 匹配的是整个被匹配的字符串
+}
 
-    for (const msg of messages) {
-        const line = formatMsg(msg, charName, userName);
-        if (currentLen + line.length > maxChars && currentLines.length > 0) {
-            chunks.push(currentLines.join('\n'));
-            currentLines = [];
-            currentLen = 0;
-        }
-        currentLines.push(line);
-        currentLen += line.length;
+/**
+ * 从消息文本中提取自定义标签内的内容
+ * @returns {string|null} 提取到的内容，未找到标签返回 null
+ */
+function extractTagContent(messageText, startTag, endTag) {
+    if (!startTag || !endTag || !messageText) return null;
+    const s = startTag.trim();
+    const e = endTag.trim();
+
+    // 构建安全的正则表达式，匹配 s 和 e 之间的所有字符
+    const regex = new RegExp(`${escapeRegExp(s)}([\\s\\S]*?)${escapeRegExp(e)}`, 'gi');
+    const matches = [];
+    let m;
+    while ((m = regex.exec(messageText)) !== null) {
+        matches.push(m[1].trim());
     }
-    if (currentLines.length >= 2) chunks.push(currentLines.join('\n'));
-    return chunks;
+
+    if (matches.length > 0) return matches.join('\n');
+    return null;
 }
 
 function chunkMessagesByCount(messages, count, charName, userName) {
@@ -146,11 +160,54 @@ function chunkMessagesByCount(messages, count, charName, userName) {
     return chunks;
 }
 
-function chunkMessages(messages, settings, charName, userName) {
-    if (settings.chunkMode === 'messages') {
-        return chunkMessagesByCount(messages, settings.chunkMsgs || 5, charName, userName);
+/**
+ * 按条数分块 + 自定义标签提取
+ * 如果设置了 customTag，会从每条消息中提取标签内容作为记忆文本
+ * @returns {{ chunks: Array, tagExtracted: boolean }}
+ */
+function chunkMessagesWithTag(messages, settings, charName, userName) {
+    const customTagStart = (settings.customTagStart || '').trim();
+    const customTagEnd = (settings.customTagEnd || '').trim();
+
+    // 无自定义标签，走常规按条数分块
+    if (!customTagStart || !customTagEnd) {
+        const chunks = chunkMessagesByCount(messages, settings.chunkMsgs || 5, charName, userName);
+        return { chunks: chunks.map(text => ({ text })), tagExtracted: false };
     }
-    return chunkMessagesByChars(messages, settings.chunkChars || 1000, charName, userName);
+
+    // 有自定义标签：逐条提取标签内容
+    const chunks = [];
+    const batchSize = settings.chunkMsgs || 5;
+
+    for (let i = 0; i < messages.length; i += batchSize) {
+        const batch = messages.slice(i, i + batchSize);
+        const tagTexts = [];
+        const fullTexts = [];
+
+        for (const msg of batch) {
+            const msgText = msg.mes || '';
+            const extracted = extractTagContent(msgText, customTagStart, customTagEnd);
+            if (extracted) {
+                const sender = msg.is_user ? userName : charName;
+                tagTexts.push(`${sender}: ${extracted}`);
+            }
+            fullTexts.push(formatMsg(msg, charName, userName));
+        }
+
+        if (tagTexts.length > 0) {
+            // 标签提取成功：用提取内容作为记忆文本
+            chunks.push({ text: tagTexts.join('\n'), isTagExtract: true });
+        } else if (fullTexts.length >= 2) {
+            // 未找到标签：回退到全文
+            chunks.push({ text: fullTexts.join('\n'), isTagExtract: false });
+        }
+    }
+
+    return { chunks, tagExtracted: chunks.some(c => c.isTagExtract) };
+}
+
+function chunkMessages(messages, settings, charName, userName) {
+    return chunkMessagesByCount(messages, settings.chunkMsgs || 5, charName, userName);
 }
 
 // ============ 核心功能：自动索引 ============
@@ -180,21 +237,44 @@ async function autoIndexMessages() {
         }
 
         // 判断是否积累够一块的内容
-        const totalChars = newMsgs.reduce((sum, { msg }) => sum + (msg.mes || '').length, 0);
-        const threshold = s.chunkMode === 'messages' ? (s.chunkMsgs || 5) : (s.chunkChars || 1000);
-        if (s.chunkMode === 'messages' ? newMsgs.length < threshold : totalChars < threshold) return;
+        const threshold = s.chunkMsgs || 5;
+        if (newMsgs.length < threshold) return;
 
         const userName = ctx.name1 || 'User';
-        const textChunks = chunkMessages(newMsgs.map(m => m.msg), s, charName, userName);
+        const customTagStart = (s.customTagStart || '').trim();
+        const customTagEnd = (s.customTagEnd || '').trim();
 
-        if (textChunks.length === 0) return;
+        if (customTagStart && customTagEnd) {
+            // ====== 自定义标签模式 ======
+            const { chunks, tagExtracted } = chunkMessagesWithTag(newMsgs.map(m => m.msg), s, charName, userName);
+            if (chunks.length === 0) return;
 
-        const chunks = textChunks.map(text => ({ text, timestamp: Date.now() }));
-        newMsgs.forEach(({ key }) => indexedMsgKeys.add(key));
+            newMsgs.forEach(({ key }) => indexedMsgKeys.add(key));
+            const tagThreshold = s.tagExtractThreshold || 300;
 
-        console.log(`[CogMem] 📝 Auto-indexing ${chunks.length} chunks (${newMsgs.length} msgs, ${totalChars} chars, mode: ${s.chunkMode})`);
-        await apiCall('/index', { method: 'POST', body: { chatTag: getChatTag(), source: 'st', chunks, autoScore: true } });
-        console.log(`[CogMem] ✅ Indexed ${chunks.length} chunks`);
+            // 逐块判断 autoScore 模式
+            const apiChunks = chunks.map(c => ({
+                text: c.text,
+                timestamp: Date.now(),
+                // 标签提取 + 短文本 → 只打标签不总结; 否则完整提炼
+                autoScore: c.isTagExtract && c.text.length <= tagThreshold ? 'tagsOnly' : true,
+            }));
+
+            console.log(`[CogMem] 📝 Auto-indexing ${apiChunks.length} chunks (tag=${customTagStart}...${customTagEnd}, tagHits=${chunks.filter(c => c.isTagExtract).length})`);
+            await apiCall('/index', { method: 'POST', body: { chatTag: getChatTag(), source: 'st', chunks: apiChunks, autoScore: 'mixed' } });
+        } else {
+            // ====== 常规模式 ======
+            const textChunks = chunkMessages(newMsgs.map(m => m.msg), s, charName, userName);
+            if (textChunks.length === 0) return;
+
+            const chunks = textChunks.map(text => ({ text, timestamp: Date.now() }));
+            newMsgs.forEach(({ key }) => indexedMsgKeys.add(key));
+
+            console.log(`[CogMem] 📝 Auto-indexing ${chunks.length} chunks (${newMsgs.length} msgs)`);
+            await apiCall('/index', { method: 'POST', body: { chatTag: getChatTag(), source: 'st', chunks, autoScore: true } });
+        }
+
+        console.log(`[CogMem] ✅ Indexed`);
         refreshStats();
     } catch (e) {
         console.warn('[CogMem] Auto-index error:', e.message);
@@ -231,20 +311,11 @@ function buildInjectionContext(searchResult) {
 
     for (const mem of (searchResult.results || [])) {
         const time = formatTimeAgo(mem.timestamp);
-        const label = VIVIDNESS_LABELS[mem.vividness] || '记忆';
-
-        if (mem.vividness === 'deep' || mem.vividness === 'clear') {
-            memoryText += `[${label} · ${time}]\n${mem.text}\n---\n`;
-        } else if (mem.vividness === 'fading') {
-            memoryText += `[${label} · ${time}] ${mem.text.substring(0, 100)}\n---\n`;
-        } else {
-            memoryText += `[${label}] ${mem.text.substring(0, 50)}\n`;
-        }
+        const kwHint = mem.kwScore > 0.3 ? ' · 关键词命中' : '';
+        memoryText += `[记忆 · ${time}${kwHint}]\n${mem.text}\n---\n`;
     }
 
-    // 应用注入模板
-    const template = s.injectTemplate || '{{text}}';
-    return template.replace('{{text}}', memoryText.trim());
+    return memoryText.trim();
 }
 
 // ============ generate_interceptor ============
@@ -262,7 +333,7 @@ globalThis.cognitiveMemoryInterceptor = async function (chat, contextSize, abort
         const ctx = SillyTavern.getContext();
         const userName = ctx.name1 || 'User';
         let userMsgParts = [];
-        
+
         // 从末尾向前扫描，收集连续的用户消息
         for (let i = chat.length - 1; i >= 0; i--) {
             const m = chat[i];
@@ -278,9 +349,9 @@ globalThis.cognitiveMemoryInterceptor = async function (chat, contextSize, abort
                 }
             }
         }
-        
+
         let lastUserMsg = userMsgParts.join(' ');
-        
+
         // 如果没有收到用户消息，则降级为使用倒数第一条正常消息
         if (!lastUserMsg && chat.length > 0) {
             for (let i = chat.length - 1; i >= 0; i--) {
@@ -301,16 +372,38 @@ globalThis.cognitiveMemoryInterceptor = async function (chat, contextSize, abort
         console.log('[CogMem] 🔍 Searching cognitive memory for generation...');
         const result = await searchCognitiveMemory(query);
 
-        if (!result.results?.length && !result.graphFacts?.length) {
-            console.log('[CogMem] No memory hits.');
+        // --- 记忆浮现机制 (每20轮) ---
+        const chatId = ctx.chatId || 'default';
+        if (!surfaceTurnCounts[chatId]) surfaceTurnCounts[chatId] = 0;
+        surfaceTurnCounts[chatId]++;
+
+        let surfaceText = '';
+        if (surfaceTurnCounts[chatId] >= 20) {
+            surfaceTurnCounts[chatId] = 0;
+            try {
+                const surfRes = await apiCall('/surface', { method: 'POST', body: { chatTag: getChatTag() } });
+                if (surfRes && surfRes.surfaced) {
+                    surfaceText = `\n\n[记忆浮现]\n以下是一段尘封的记忆片段，它突然浮现在你的脑海中。如果合适，你可以自然地在对话中提及或联想到这件事，如果与当前话题无关也可以忽略：\n「${surfRes.surfaced.text}」`;
+                    console.log(`[CogMem] 🌊 第20轮浮现注入: "${surfRes.surfaced.text.substring(0, 40)}…"`);
+                }
+            } catch (e) {
+                console.warn('[CogMem] Surface API failed:', e.message);
+            }
+        }
+
+        if (!result.results?.length && !result.graphFacts?.length && !surfaceText) {
+            console.log('[CogMem] No memory hits and no surface.');
             lastInjectedContext = '';
             updateInjectPreview();
             return;
         }
 
-        const injectionText = buildInjectionContext(result);
+        let injectionText = buildInjectionContext(result) || '';
+        injectionText += surfaceText;
+        injectionText = injectionText.trim();
+
         lastInjectedContext = injectionText;
-        console.log(`[CogMem] 🧠 Found ${result.results.length} memories, injecting ${injectionText.length} chars (pos: ${s.injectPosition})`);
+        console.log(`[CogMem] 🧠 Injecting ${injectionText.length} chars (pos: ${s.injectPosition})`);
 
         const sysMsg = {
             role: 'system',
@@ -389,7 +482,7 @@ async function fullIndexCurrentChat() {
         const batchSize = 10;
         for (let i = 0; i < chunks.length; i += batchSize) {
             const batch = chunks.slice(i, i + batchSize);
-            await apiCall('/index', { method: 'POST', body: { chatTag: getChatTag(), source: 'st', chunks: batch, autoScore: true } });
+            await apiCall('/index', { method: 'POST', body: { chatTag: getChatTag(), source: 'st', chunks: batch, autoScore: true, userName: ctx.name1 || 'User', charName } });
             done += batch.length;
             setActionStatus(`索引中... ${done}/${chunks.length}`);
         }
@@ -423,7 +516,6 @@ async function openMemoryBrowser() {
         html += '</div>';
 
         for (const mem of data.memories) {
-            const emoji = EMOTION_EMOJI[mem.emotionType] || '';
             const impClass = mem.importance >= 7 ? 'imp-high' : mem.importance >= 4 ? 'imp-mid' : 'imp-low';
             const impBar = '■'.repeat(Math.min(10, mem.importance)) + '□'.repeat(Math.max(0, 10 - mem.importance));
             const coreTag = mem.isCore ? '<span class="cogmem-mem-core-tag">[核心]</span>' : '';
@@ -431,7 +523,7 @@ async function openMemoryBrowser() {
 
             html += `<div class="cogmem-mem-card ${impClass}" data-memid="${mem.id}">`;
             html += `<div class="cogmem-mem-title">`;
-            html += `<span>${emoji} ${mem.summary || (mem.text || '').substring(0, 40) + '…'} ${coreTag}</span>`;
+            html += `<span>${mem.summary || (mem.text || '').substring(0, 40) + '…'} ${coreTag}</span>`;
             html += `<span class="cogmem-mem-time">${timeStr}</span>`;
             html += `</div>`;
             html += `<div class="cogmem-mem-meta">重要性 ${impBar} ${mem.importance}/10 · 回忆 ${mem.accessCount || 0} 次</div>`;
@@ -496,12 +588,36 @@ async function syncPull() {
     const charName = getCharName();
     if (!charName) { toastr.warning('请先打开角色聊天'); return; }
     try {
-        const data = await apiCall(`/sync/pull?chatTag=${encodeURIComponent(getChatTag())}&source=ztj`);
-        const count = data?.memories?.length || 0;
+        // 将全局的砖头机记忆分配给当前聊天
+        const targetChatTag = getChatTag();
+        const sourceChatTag = `chat:${charName}`;
+        const data = await apiCall(`/sync/claim`, {
+            method: 'POST',
+            body: { sourceChatTag, targetChatTag }
+        });
+        const count = data?.count || 0;
         if (count === 0) {
-            setActionStatus('砖头机暂无新记忆', '');
+            setActionStatus('全局库暂无未分配的砖头机记忆', '');
         } else {
-            setActionStatus(`✅ 已拉取 ${count} 块来自砖头机的记忆`, 'success');
+            setActionStatus(`✅ 成功将 ${count} 条砖头机记忆拉入本聊天！`, 'success');
+        }
+        refreshStats();
+    } catch (e) { setActionStatus(`❌ ${e.message}`, 'error'); }
+}
+
+async function syncClearZtj() {
+    const charName = getCharName();
+    if (!charName) { toastr.warning('请先打开角色聊天'); return; }
+    try {
+        const data = await apiCall(`/sync/clearztj`, {
+            method: 'DELETE',
+            body: { chatTag: getChatTag() }
+        });
+        const count = data?.count || 0;
+        if (count === 0) {
+            setActionStatus('本聊天没有砖头机拉取的记忆', '');
+        } else {
+            setActionStatus(`🗑️ 成功撤销了 ${count} 条本聊天的砖头机记忆！`, 'success');
         }
         refreshStats();
     } catch (e) { setActionStatus(`❌ ${e.message}`, 'error'); }
@@ -659,10 +775,9 @@ async function diagSearch() {
         }
         let html = `<div style="margin-bottom:4px;opacity:0.6">候选 ${result.total} → 命中 ${result.results.length}</div>`;
         for (const r of result.results) {
-            const emoji = EMOTION_EMOJI[r.emotionType] || '';
             html += `<div style="margin-bottom:6px;padding:4px;background:var(--SmartThemeBlurTintColor);border-radius:4px;">`;
-            html += `<b>${emoji} ${r.summary || r.text.substring(0, 40)}</b> `;
-            html += `<span style="opacity:0.5">[score=${r.score.toFixed(3)} rel=${r.relevance} rec=${r.recency} imp=${r.importance} ${r.vividness}]</span>`;
+            html += `<b>${r.summary || r.text.substring(0, 40)}</b> `;
+            html += `<span style="opacity:0.5">[score=${r.score.toFixed(3)} rel=${r.relevance} kw=${r.kwScore || 0} rec=${r.recency} imp=${r.importance}]</span>`;
             html += `<div style="font-size:11px;opacity:0.6;margin-top:2px;">${r.text.substring(0, 120)}</div>`;
             html += `</div>`;
         }
@@ -710,19 +825,18 @@ function populateUI() {
     set('cogmem_score_key', 'value', s.scoreKey);
     set('cogmem_score_model', 'value', s.scoreModel);
     set('cogmem_topk', 'value', s.topK);
-    set('cogmem_chunk_chars', 'value', s.chunkChars);
     set('cogmem_chunk_msgs', 'value', s.chunkMsgs);
     set('cogmem_keep_recent', 'value', s.keepRecent);
-    // 分块模式单选
-    const chunkRadios = document.querySelectorAll('input[name="cogmem_chunk_mode"]');
-    chunkRadios.forEach(r => { r.checked = r.value === s.chunkMode; });
+    set('cogmem_custom_tag_start', 'value', s.customTagStart || '');
+    set('cogmem_custom_tag_end', 'value', s.customTagEnd || '');
+    set('cogmem_tag_threshold', 'value', s.tagExtractThreshold ?? 300);
 
     set('cogmem_w_relevance', 'value', s.wRelevance);
     set('cogmem_w_recency', 'value', s.wRecency);
     set('cogmem_w_importance', 'value', s.wImportance);
     set('cogmem_decay_rate', 'value', s.decayRate);
 
-    set('cogmem_inject_template', 'value', s.injectTemplate);
+
     set('cogmem_inject_depth', 'value', s.injectDepth);
     // 设置单选按钮
     const radios = document.querySelectorAll('input[name="cogmem_inject_pos"]');
@@ -750,27 +864,17 @@ function bindEvents() {
     bindVal('cogmem_score_key', 'scoreKey', v => v.trim());
     bindVal('cogmem_score_model', 'scoreModel', v => v.trim());
     bindVal('cogmem_topk', 'topK', v => parseInt(v) || 5);
-    bindVal('cogmem_chunk_chars', 'chunkChars', v => Math.max(200, parseInt(v) || 1000));
     bindVal('cogmem_chunk_msgs', 'chunkMsgs', v => Math.max(1, parseInt(v) || 5));
     bindVal('cogmem_keep_recent', 'keepRecent', v => parseInt(v) || 10);
-
-    // 分块模式
-    const chunkModeRadios = document.querySelectorAll('input[name="cogmem_chunk_mode"]');
-    chunkModeRadios.forEach(r => {
-        r.addEventListener('change', () => { s.chunkMode = r.value; saveSettings(); });
-    });
+    bindVal('cogmem_custom_tag_start', 'customTagStart', v => v.trim());
+    bindVal('cogmem_custom_tag_end', 'customTagEnd', v => v.trim());
+    bindVal('cogmem_tag_threshold', 'tagExtractThreshold', v => Math.max(0, parseInt(v) || 300));
 
     // 权重 / 衰减（已改为数字输入）
     bindVal('cogmem_w_relevance', 'wRelevance', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
     bindVal('cogmem_w_recency', 'wRecency', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
     bindVal('cogmem_w_importance', 'wImportance', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
     bindVal('cogmem_decay_rate', 'decayRate', v => Math.max(0, Math.min(100, parseInt(v) || 0)));
-
-    // 注入模板
-    const tmplEl = document.getElementById('cogmem_inject_template');
-    if (tmplEl) {
-        tmplEl.addEventListener('input', () => { s.injectTemplate = tmplEl.value; saveSettings(); });
-    }
 
     // 注入位置
     const radios = document.querySelectorAll('input[name="cogmem_inject_pos"]');
@@ -787,6 +891,7 @@ function bindEvents() {
     document.getElementById('cogmem_btn_browse')?.addEventListener('click', openMemoryBrowser);
     document.getElementById('cogmem_btn_sync_push')?.addEventListener('click', syncPush);
     document.getElementById('cogmem_btn_sync_pull')?.addEventListener('click', syncPull);
+    document.getElementById('cogmem_btn_sync_undo')?.addEventListener('click', syncClearZtj);
     document.getElementById('cogmem_btn_diag')?.addEventListener('click', diagSearch);
 
     // 诊断按钮
@@ -803,7 +908,7 @@ function bindEvents() {
             const kEl = document.getElementById('cogmem_emb_key');
             let endpoint = (eEl?.value || '').trim();
             const key = (kEl?.value || '').trim();
-            
+
             if (!endpoint) { toastr.warning('请先输入 Embedding API 地址'); return; }
             if (endpoint.endsWith('/v1/chat/completions') || endpoint.endsWith('/v1/embeddings')) {
                 endpoint = endpoint.replace(/\/(chat\/completions|embeddings)$/, '');
@@ -811,18 +916,18 @@ function bindEvents() {
             if (endpoint.endsWith('/v1')) {
                 endpoint = endpoint.replace(/\/v1$/, '');
             }
-            
+
             const originalBtnText = document.getElementById('cogmem_btn_pull_emb').innerHTML;
             document.getElementById('cogmem_btn_pull_emb').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 拉取中...';
-            
+
             try {
                 const res = await fetch(`${endpoint}/v1/models`, {
                     headers: { 'Authorization': `Bearer ${key}` }
                 });
-                
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                
+
                 const models = Array.isArray(data) ? data : (data.data || []);
                 const datalist = document.getElementById('cogmem_emb_model_list');
                 if (datalist) {
@@ -835,8 +940,17 @@ function bindEvents() {
                             datalist.appendChild(option);
                         }
                     });
+
+                    // 自动选择第一个，或者清空后聚焦以唤起下拉
+                    const inputEl = document.getElementById('cogmem_emb_model');
+                    if (inputEl) {
+                        inputEl.focus();
+                        inputEl.value = '';
+                        // 触发 input 事件以保存设置（清空值）
+                        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                 }
-                toastr.success(`成功拉取 ${models.length} 个模型，请在输入框下拉选择`);
+                toastr.success(`成功拉取 ${models.length} 个模型，请双击或点击输入框查看`);
             } finally {
                 document.getElementById('cogmem_btn_pull_emb').innerHTML = originalBtnText;
             }
@@ -847,10 +961,10 @@ function bindEvents() {
         try {
             const eEl = document.getElementById('cogmem_score_endpoint');
             const kEl = document.getElementById('cogmem_score_key');
-            
+
             let endpoint = (eEl?.value || '').trim();
             const key = (kEl?.value || '').trim();
-            
+
             if (!endpoint) {
                 // 如果为空，尝试使用 Embedding 的地址
                 endpoint = (document.getElementById('cogmem_emb_endpoint')?.value || '').trim();
@@ -858,27 +972,27 @@ function bindEvents() {
                     toastr.warning('请先输入评估 LLM (或 Embedding) API 地址'); return;
                 }
             }
-            
+
             if (endpoint.endsWith('/v1/chat/completions') || endpoint.endsWith('/v1/embeddings')) {
                 endpoint = endpoint.replace(/\/(chat\/completions|embeddings)$/, '');
             }
             if (endpoint.endsWith('/v1')) {
                 endpoint = endpoint.replace(/\/v1$/, '');
             }
-            
+
             const reqKey = key || (document.getElementById('cogmem_emb_key')?.value || '').trim();
-            
+
             const originalBtnText = document.getElementById('cogmem_btn_pull_score').innerHTML;
             document.getElementById('cogmem_btn_pull_score').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 拉取中...';
-            
+
             try {
                 const res = await fetch(`${endpoint}/v1/models`, {
                     headers: { 'Authorization': `Bearer ${reqKey}` }
                 });
-                
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                
+
                 const models = Array.isArray(data) ? data : (data.data || []);
                 const datalist = document.getElementById('cogmem_score_model_list');
                 if (datalist) {
@@ -891,8 +1005,15 @@ function bindEvents() {
                             datalist.appendChild(option);
                         }
                     });
+
+                    const inputEl = document.getElementById('cogmem_score_model');
+                    if (inputEl) {
+                        inputEl.focus();
+                        inputEl.value = '';
+                        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                 }
-                toastr.success(`成功拉取 ${models.length} 个模型，请在输入框下拉选择`);
+                toastr.success(`成功拉取 ${models.length} 个模型，请双击或点击输入框查看`);
             } finally {
                 document.getElementById('cogmem_btn_pull_score').innerHTML = originalBtnText;
             }
@@ -949,67 +1070,67 @@ function bindEvents() {
 // ============ 初始化 ============
 (async function init() {
     try {
-    const ctx = SillyTavern.getContext();
-    console.log('[CogMem] 🚀 前端扩展初始化开始...');
+        const ctx = SillyTavern.getContext();
+        console.log('[CogMem] 🚀 前端扩展初始化开始...');
 
-    // 检测插件
-    try {
-        const status = await apiCall('/status');
-        pluginOnline = !!(status && (status.plugin === 'cognitive-memory' || status.status === 'ok'));
-        console.log('[CogMem] 插件状态:', pluginOnline ? '在线' : '离线');
-    } catch (e) {
-        pluginOnline = false;
-        console.warn('[CogMem] ⚠️ 无法连接服务端插件:', e.message);
-    }
-
-    // 渲染设置面板
-    const { renderExtensionTemplateAsync } = ctx;
-    const settingsHtml = await renderExtensionTemplateAsync('third-party/cognitive-memory-ext', 'settings');
-    $('#extensions_settings2').append(settingsHtml);
-    console.log('[CogMem] ✅ 设置面板已渲染');
-
-    // 填充 UI
-    try { populateUI(); console.log('[CogMem] ✅ populateUI 完成'); }
-    catch (e) { console.error('[CogMem] ❌ populateUI 崩溃:', e); }
-
-    // 绑定事件（独立 try-catch，确保即使 populateUI 崩溃也能绑定按钮）
-    try { bindEvents(); console.log('[CogMem] ✅ bindEvents 完成'); }
-    catch (e) { console.error('[CogMem] ❌ bindEvents 崩溃:', e); }
-
-    // 更新状态徽章
-    const badge = document.getElementById('cogmem_status_badge');
-    if (badge) {
-        if (pluginOnline) {
-            badge.textContent = '在线';
-            badge.className = 'cogmem-badge cogmem-badge-on';
-        } else {
-            badge.textContent = '离线';
-            badge.className = 'cogmem-badge cogmem-badge-off';
+        // 检测插件
+        try {
+            const status = await apiCall('/status');
+            pluginOnline = !!(status && (status.plugin === 'cognitive-memory' || status.status === 'ok'));
+            console.log('[CogMem] 插件状态:', pluginOnline ? '在线' : '离线');
+        } catch (e) {
+            pluginOnline = false;
+            console.warn('[CogMem] ⚠️ 无法连接服务端插件:', e.message);
         }
-    }
 
-    // 事件钩子
-    const { eventSource, event_types } = ctx;
+        // 渲染设置面板
+        const { renderExtensionTemplateAsync } = ctx;
+        const settingsHtml = await renderExtensionTemplateAsync('third-party/cognitive-memory-ext', 'settings');
+        $('#extensions_settings2').append(settingsHtml);
+        console.log('[CogMem] ✅ 设置面板已渲染');
 
-    // 聊天切换
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        indexedMsgKeys.clear();
-        lastInjectedContext = '';
+        // 填充 UI
+        try { populateUI(); console.log('[CogMem] ✅ populateUI 完成'); }
+        catch (e) { console.error('[CogMem] ❌ populateUI 崩溃:', e); }
+
+        // 绑定事件（独立 try-catch，确保即使 populateUI 崩溃也能绑定按钮）
+        try { bindEvents(); console.log('[CogMem] ✅ bindEvents 完成'); }
+        catch (e) { console.error('[CogMem] ❌ bindEvents 崩溃:', e); }
+
+        // 更新状态徽章
+        const badge = document.getElementById('cogmem_status_badge');
+        if (badge) {
+            if (pluginOnline) {
+                badge.textContent = '在线';
+                badge.className = 'cogmem-badge cogmem-badge-on';
+            } else {
+                badge.textContent = '离线';
+                badge.className = 'cogmem-badge cogmem-badge-off';
+            }
+        }
+
+        // 事件钩子
+        const { eventSource, event_types } = ctx;
+
+        // 聊天切换
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            indexedMsgKeys.clear();
+            lastInjectedContext = '';
+            refreshStats();
+            updateInjectPreview();
+        });
+
+        // 自动索引（收到消息后延迟）
+        let indexTimer = null;
+        eventSource.on(event_types.MESSAGE_RECEIVED, () => {
+            if (indexTimer) clearTimeout(indexTimer);
+            indexTimer = setTimeout(() => { autoIndexMessages(); indexTimer = null; }, 3000);
+        });
+
+        // 初始统计
         refreshStats();
-        updateInjectPreview();
-    });
 
-    // 自动索引（收到消息后延迟）
-    let indexTimer = null;
-    eventSource.on(event_types.MESSAGE_RECEIVED, () => {
-        if (indexTimer) clearTimeout(indexTimer);
-        indexTimer = setTimeout(() => { autoIndexMessages(); indexTimer = null; }, 3000);
-    });
-
-    // 初始统计
-    refreshStats();
-
-    console.log(`[CogMem] 🧠 认知记忆扩展已加载 (plugin: ${pluginOnline ? '在线' : '离线'})`);
+        console.log(`[CogMem] 🧠 认知记忆扩展已加载 (plugin: ${pluginOnline ? '在线' : '离线'})`);
     } catch (fatalErr) {
         console.error('[CogMem] ❌❌❌ 扩展初始化失败:', fatalErr);
     }

@@ -991,10 +991,10 @@ function bindEvents() {
         const badge = document.getElementById('cogmem_status_badge');
         if (badge) {
             if (pluginOnline) {
-                badge.textContent = '服务器已连接';
+                badge.textContent = '已连接';
                 badge.style.background = '#28a745';
             } else {
-                badge.textContent = '未连接服务器';
+                badge.textContent = '未连接';
                 badge.style.background = '#dc3545';
             }
         }

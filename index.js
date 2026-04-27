@@ -10,7 +10,7 @@
  */
 
 const MODULE_NAME = 'cognitive_memory';
-const COG_API = '/api/plugins/cognitive-memory';
+const COG_API = '/api/plugins/zhuantouji-sync';
 
 
 
@@ -713,7 +713,7 @@ async function syncPull() {
         // 1. 从旧插件拉取传统记忆
         try {
             const fetchOptions = { headers: SillyTavern.getRequestHeaders() };
-            const res = await fetch(`/api/plugins/zhuantouji-sync/pull?char=${encodeURIComponent(charName)}&source=st`, fetchOptions);
+            const res = await fetch(`/api/plugins/zhuantouji-sync/pull?char=${encodeURIComponent(charName)}&source=ztj`, fetchOptions);
             if (res.ok) {
                 const result = await res.json();
                 if (result.memories && result.memories.length > 0) {

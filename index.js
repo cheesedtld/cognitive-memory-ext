@@ -655,27 +655,50 @@ ${chatText}
 
         if (!summary || !summary.trim()) throw new Error('摘要生成失败：返回为空');
 
-        const memoryEntry = {
-            id: 'card_st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-            text: summary.trim(),
-            source: 'st',
-            timestamp: Date.now(),
-            isCore: true
-        };
-
-        // 2. 推送到后端
-        await apiCall('/sync/push', {
-            method: 'POST',
-            body: { chatTag: `chat:${getCharName()}`, source: 'st', memories: [memoryEntry] }
-        });
-
-        // 3. 插入本地聊天流
-        const summaryMessage = `<details>\n<summary>📱 <b>已同步到砖头机：线下记忆摘要</b></summary>\n\n${summary.trim()}\n\n</details>\n\n*(系统提示：以上线下互动记忆已同步至砖头机，线上聊天时角色会自然地体现对这些经历的了解。)*`;
-        if (typeof createChatMessages === 'function') {
-            await createChatMessages([{ role: 'system', message: summaryMessage }]);
+        const asVector = document.getElementById('cogmem_sync_as_vector')?.checked ?? true;
+        
+        if (asVector) {
+            const memoryEntry = {
+                id: 'card_st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+                text: summary.trim(),
+                source: 'st',
+                timestamp: Date.now(),
+                isCore: true
+            };
+            // 2. 推送到认知记忆后端
+            await apiCall('/sync/push', {
+                method: 'POST',
+                body: { chatTag: `chat:${getCharName()}`, source: 'st', memories: [memoryEntry] }
+            });
+            
+            // 3. 插入本地聊天流
+            const summaryMessage = `<details>\n<summary>📱 <b>已同步到砖头机：线下卡片 (触发打标)</b></summary>\n\n${summary.trim()}\n\n</details>\n\n*(系统提示：以上线下互动记忆已同步至砖头机并打标为核心向量，线上聊天时角色会自然地体现对这些经历的了解。)*`;
+            if (typeof createChatMessages === 'function') {
+                await createChatMessages([{ role: 'system', message: summaryMessage }]);
+            }
+            setActionStatus(`✅ 成功生成剧情总结并推送为向量卡片！`, 'success');
+        } else {
+            // 推送到传统的 zhuantouji-sync 后端
+            const memoryEntry = {
+                t: `线下 AIRP 记忆 (${new Date().toLocaleString()})`,
+                c: summary.trim(),
+                ts: new Date().toISOString(),
+            };
+            const fetchOptions = {
+                method: 'POST',
+                headers: { ...SillyTavern.getRequestHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ char: getCharName(), source: 'st', memories: [memoryEntry] })
+            };
+            const res = await fetch('/api/plugins/zhuantouji-sync/push', fetchOptions);
+            if (!res.ok) throw new Error(`Traditional API Error ${res.status}`);
+            
+            // 3. 插入本地聊天流
+            const summaryMessage = `<details>\n<summary>📱 <b>已同步到砖头机：线下记忆摘要 (纯总结)</b></summary>\n\n${summary.trim()}\n\n</details>\n\n*(系统提示：以上线下互动记忆已同步至砖头机的记忆列表，线上聊天时角色会自然地体现对这些经历的了解。)*`;
+            if (typeof createChatMessages === 'function') {
+                await createChatMessages([{ role: 'system', message: summaryMessage }]);
+            }
+            setActionStatus(`✅ 成功生成剧情总结并推送到记忆列表！`, 'success');
         }
-
-        setActionStatus(`✅ 成功生成剧情总结并推送！`, 'success');
     } catch (e) {
         setActionStatus(`❌ ${e.message}`, 'error');
     }
@@ -685,40 +708,63 @@ async function syncPull() {
     const charName = getCharName();
     if (!charName) { toastr.warning('请先打开角色聊天'); return; }
     try {
-        // 从后端拉取砖头机产生的 card_ztj_ 记录
+        let pulledSomething = false;
+        
+        // 1. 从旧插件拉取传统记忆
+        try {
+            const fetchOptions = { headers: SillyTavern.getRequestHeaders() };
+            const res = await fetch(`/api/plugins/zhuantouji-sync/pull?char=${encodeURIComponent(charName)}&source=st`, fetchOptions);
+            if (res.ok) {
+                const result = await res.json();
+                if (result.memories && result.memories.length > 0) {
+                    let injectContent = '<details>\n<summary>📱 <b>点击展开：从砖头机同步的线上聊天前情</b></summary>\n\n';
+                    result.memories.forEach((mem, i) => {
+                        injectContent += `[线上记忆${i + 1}: ${mem.t || '日常聊天'}]\n${mem.c || ''}\n\n`;
+                    });
+                    injectContent += '</details>\n\n*(系统提示：双方已结束线上交流，正式切换为线下见面/现实互动模式。请结合上方的前情摘要，自然流畅地展开接下来的剧情。)*';
+                    
+                    if (typeof createChatMessages === 'function') {
+                        await createChatMessages([{ role: 'system', message: injectContent }]);
+                    }
+                    pulledSomething = true;
+                }
+            }
+        } catch (e) {
+            console.warn('[CogMem] 传统拉取失败 (可忽略)', e);
+        }
+
+        // 2. 从后端拉取砖头机产生的 card_ztj_ 记录 (向量日记卡片)
         const syncChatTag = `chat:${charName}`;
         const data = await apiCall(`/memories?chatTag=${encodeURIComponent(syncChatTag)}&limit=1000`);
         const cards = (data?.memories || []).filter(m => m.id && m.id.startsWith('card_ztj_') && !m.isArchived);
 
-        if (cards.length === 0) {
-            setActionStatus('暂无来自砖头机的新事件日记', '');
-            return;
+        if (cards.length > 0) {
+            let injectContent = '<details>\n<summary>📱 <b>点击展开：从砖头机同步的前情提要（近3条日记）</b></summary>\n\n';
+            for (const mem of cards) {
+                await apiCall(`/memories/${encodeURIComponent(mem.id)}`, { method: 'PUT', body: { isArchived: true } });
+            }
+            const displayCards = cards
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+                .slice(0, 3)
+                .reverse();
+
+            for (const [i, mem] of displayCards.entries()) {
+                injectContent += `[事件日记 ${i + 1}]\n${mem.text || ''}\n\n`;
+            }
+            injectContent += '</details>\n\n*(系统提示：以上是近三天砖头机线下的事件日记背景，请结合这些线索，自然流畅地展开接下来的剧情。)*';
+
+            if (typeof createChatMessages === 'function') {
+                await createChatMessages([{ role: 'system', message: injectContent }]);
+            }
+            pulledSomething = true;
         }
 
-        // 整理为一条前情提要消息
-        let injectContent = '<details>\n<summary>📱 <b>点击展开：从砖头机同步的前情提要（近3条日记）</b></summary>\n\n';
-
-        // 取最近三条用于展示，并将所有拉取到的都标记为已读避免重复拉取
-        for (const mem of cards) {
-            await apiCall(`/memories/${encodeURIComponent(mem.id)}`, { method: 'PUT', body: { isArchived: true } });
+        if (pulledSomething) {
+            setActionStatus(`✅ 成功拉取砖头机记忆并插入背景！`, 'success');
+            refreshStats();
+        } else {
+            setActionStatus('暂无来自砖头机的新前情记录', '');
         }
-
-        const displayCards = cards
-            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-            .slice(0, 3)
-            .reverse();
-
-        for (const [i, mem] of displayCards.entries()) {
-            injectContent += `[事件日记 ${i + 1}]\n${mem.text || ''}\n\n`;
-        }
-        injectContent += '</details>\n\n*(系统提示：以上是近三天砖头机线下的事件日记背景，请结合这些线索，自然流畅地展开接下来的剧情。)*';
-
-        if (typeof createChatMessages === 'function') {
-            await createChatMessages([{ role: 'system', message: injectContent }]);
-        }
-
-        setActionStatus(`✅ 成功拉取 ${cards.length} 条砖头机事件日记并插入背景！`, 'success');
-        refreshStats();
     } catch (e) { setActionStatus(`❌ ${e.message}`, 'error'); }
 }
 

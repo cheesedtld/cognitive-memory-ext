@@ -34,7 +34,15 @@
                     <i class="fa-solid fa-arrow-up"></i>
                     <span>生成 ST 总结推砖头机</span>
                 </div>
-                <div id="cogmem_btn_sync_pull" class="menu_button">
+                
+                <div class="cogmem-toggle-row" style="grid-column: 1 / -1; margin-top: -5px; margin-bottom: 5px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px;">
+                        <input type="checkbox" id="cogmem_sync_as_vector" checked />
+                        作为分享卡片推送 (在砖头机端展示并进行打标)
+                    </label>
+                </div>
+
+                <div id="cogmem_btn_sync_pull" class="menu_button" style="grid-column: 1 / -1;">
                     <i class="fa-solid fa-arrow-down"></i>
                     <span>拉取砖头机事件日记</span>
                 </div>
